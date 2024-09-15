@@ -11,9 +11,9 @@ import mysql.connector
 # Credenciais do banco de dados MySQL usando o endereço público
 host = 'autorack.proxy.rlwy.net'
 usuario = 'root'
-senha = 'LqJjCeKKSneZvlZhkpaQtxlVIfhiHBGH'
+senha = 'VqMXhctmmBdpdlusjytjGTxGiaPtWXEn'
 banco_de_dados = 'railway'
-porta = 58916
+porta = 29968
 
 # Função para conectar ao banco de dados MySQL
 def conectar_banco_de_dados():
@@ -88,6 +88,61 @@ def inserir_dado(data):
                 connection.close()
     else:
         st.error("Não foi possível conectar ao banco de dados para inserir dados.")
+    st.rerun()
+
+# Função para recuperar dados do banco de dados
+def recuperar_dados():
+    connection = conectar_banco_de_dados()
+    if connection is not None:
+        try:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM imoveis")
+            result = cursor.fetchall()
+            cursor.close()
+            connection.close()
+            if result:
+                data = pd.DataFrame(result)
+                return data
+            else:
+                return pd.DataFrame()
+        except mysql.connector.Error as e:
+            st.error(f"Erro ao recuperar dados do banco de dados: {e}")
+        except Exception as e:
+            st.error(f"Ocorreu um erro inesperado: {e}")
+    else:
+        st.error("Não foi possível conectar ao banco de dados para recuperar dados.")
+        return pd.DataFrame()
+
+# Função para criar dataset sintético
+def create_synthetic_dataset():
+    np.random.seed(42)
+    data = pd.DataFrame({
+        'tamanho': np.random.randint(50, 500, size=1000),
+        'condicao': np.random.randint(1, 11, size=1000),
+        'quartos': np.random.randint(1, 6, size=1000),
+        'banheiros': np.random.randint(1, 4, size=1000),
+        'bairro': np.random.choice(['Centro', 'Zona Sul', 'Zona Norte', 'Zona Leste', 'Zona Oeste'], size=1000),
+        'tipo_imovel': np.random.choice(['Casa', 'Apartamento'], size=1000)
+    })
+    data['preco'] = (
+        data['tamanho'] * 50 +
+        data['condicao'] * 100 +
+        data['quartos'] * 200 +
+        data['banheiros'] * 150 +
+        data['bairro'].map({
+            'Centro': 1000,
+            'Zona Sul': 800,
+            'Zona Norte': 600,
+            'Zona Leste': 400,
+            'Zona Oeste': 200
+        }) +
+        data['tipo_imovel'].map({
+            'Casa': 500,
+            'Apartamento': 0
+        }) +
+        np.abs(np.random.normal(0, 50000, size=1000))
+    )
+    return data
 
 # Função para inserir múltiplos dados no banco de dados
 def inserir_dados_em_lote(dados):
@@ -124,59 +179,6 @@ def inserir_dados_em_lote(dados):
     else:
         st.error("Não foi possível conectar ao banco de dados para inserir dados.")
 
-# Função para recuperar dados do banco de dados
-def recuperar_dados():
-    connection = conectar_banco_de_dados()
-    if connection is not None:
-        try:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM imoveis")
-            result = cursor.fetchall()
-            cursor.close()
-            connection.close()
-            if result:
-                data = pd.DataFrame(result)
-                return data
-            else:
-                return pd.DataFrame()
-        except mysql.connector.Error as e:
-            st.error(f"Erro ao recuperar dados do banco de dados: {e}")
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado: {e}")
-    else:
-        st.error("Não foi possível conectar ao banco de dados para recuperar dados.")
-        return pd.DataFrame()
-
-# Função para criar dataset sintético
-def create_synthetic_dataset():
-    np.random.seed(42)
-    data = pd.DataFrame({
-        'tamanho': np.random.randint(50, 500, size=1000),
-        'condicao': np.random.randint(0, 11, size=1000),
-        'quartos': np.random.randint(1, 6, size=1000),
-        'banheiros': np.random.randint(1, 4, size=1000),
-        'bairro': np.random.choice(['Centro', 'Zona Sul', 'Zona Norte', 'Zona Leste', 'Zona Oeste'], size=1000),
-        'tipo_imovel': np.random.choice(['Casa', 'Apartamento'], size=1000)
-    })
-    data['preco'] = (
-        data['tamanho'] * 50 +
-        data['condicao'] * 100 +
-        data['quartos'] * 200 +
-        data['banheiros'] * 150 +
-        data['bairro'].map({
-            'Centro': 1000,
-            'Zona Sul': 800,
-            'Zona Norte': 600,
-            'Zona Leste': 400,
-            'Zona Oeste': 200
-        }) +
-        data['tipo_imovel'].map({
-            'Casa': 500,
-            'Apartamento': 0
-        }) +
-        np.random.normal(0, 50000, size=1000)
-    )
-    return data
 
 # Função para verificar se a tabela está vazia e inserir dados sintéticos se necessário
 def verificar_e_inserir_dados():
@@ -195,21 +197,18 @@ def retrain_model():
     if data.empty:
         data = create_synthetic_dataset()
     else:
-        # Garantir que os tipos de dados estão corretos
         data['condicao'] = data['condicao'].astype(int)
         data['quartos'] = data['quartos'].astype(int)
         data['banheiros'] = data['banheiros'].astype(int)
         data['tamanho'] = data['tamanho'].astype(float)
         data['preco'] = data['preco'].astype(float)
         
-    # Verifica se a coluna 'id' existe antes de removê-la
     if 'id' in data.columns:
         X = data.drop('id', axis=1)
     else:
         X = data.copy()
     y = data['preco']
     
-    # Pré-processamento
     numerical_features = ['tamanho', 'condicao', 'quartos', 'banheiros']
     categorical_features = ['bairro', 'tipo_imovel']
     numerical_transformer = 'passthrough'
@@ -219,7 +218,6 @@ def retrain_model():
             ('num', numerical_transformer, numerical_features),
             ('cat', categorical_transformer, categorical_features)
         ])
-    # Modelo
     model = RandomForestRegressor(n_estimators=200, max_depth=None, random_state=42)
     global final_model
     final_model = Pipeline(steps=[
@@ -227,12 +225,14 @@ def retrain_model():
         ('model', model)
     ])
     final_model.fit(X, y)
+    st.rerun()
 
 # Inicializar o modelo
 if 'final_model' not in st.session_state:
     criar_tabela()
     retrain_model()
     st.session_state['final_model'] = final_model
+    st.rerun()
 else:
     final_model = st.session_state['final_model']
 
@@ -240,7 +240,6 @@ else:
 pagina = st.sidebar.selectbox("Navegação", ["Previsor de Preços", "Editar Tabela"])
 
 if pagina == "Previsor de Preços":
-    # Página de Previsor de Preços
     st.title("Previsor de Preços de Imóveis")
     st.write("Insira as características do imóvel para obter uma estimativa de preço.")
 
@@ -265,11 +264,7 @@ if pagina == "Previsor de Preços":
         
         real_price = st.number_input("Se o preço estiver incorreto, insira o valor real:")
         if st.button("Enviar Preço Real"):
-            st.write("Botão 'Enviar Preço Real' clicado.")
-            st.write(f"Valor inserido: {real_price}")
-            
             if real_price > 0:
-                st.write("Inserindo dados no banco de dados...")
                 new_data = {
                     'tamanho': tamanho,
                     'condicao': condicao,
@@ -287,15 +282,12 @@ if pagina == "Previsor de Preços":
                 st.warning("Por favor, insira um preço real válido.")
 
 elif pagina == "Editar Tabela":
-    # Página para edição da tabela
     st.title("Editar Tabela de Imóveis")
     
-    # Exibir dados da tabela
     dados = recuperar_dados()
     if not dados.empty:
         st.dataframe(dados)
         
-        # Selecionar registro para edição
         id_editar = st.number_input("ID do registro para editar", min_value=1, value=1)
         registro = dados[dados['id'] == id_editar]
         
@@ -310,8 +302,6 @@ elif pagina == "Editar Tabela":
             preco_edit = st.number_input("Preço do imóvel", min_value=0.0, value=float(registro['preco'].values[0]))
 
             if st.button("Atualizar"):
-                st.write("Atualizando o registro...")
-                # Atualizar o registro no banco de dados
                 connection = conectar_banco_de_dados()
                 if connection is not None:
                     try:
@@ -325,6 +315,7 @@ elif pagina == "Editar Tabela":
                         cursor.close()
                         connection.close()
                         st.success("Registro atualizado com sucesso!")
+                        st.rerun()
                     except mysql.connector.Error as e:
                         st.error(f"Erro ao atualizar o registro: {e}")
                     except Exception as e:
@@ -338,3 +329,30 @@ elif pagina == "Editar Tabela":
             st.warning("ID não encontrado.")
     else:
         st.warning("A tabela está vazia. Nenhum dado disponível para edição.")
+    
+    # Formulário de Inclusão de Registro dentro de um Expander
+    with st.expander("Incluir Novo Registro"):
+        st.write("Preencha os dados do novo imóvel para adicionar ao banco de dados.")
+        tamanho_novo = st.number_input("Tamanho do imóvel (m²)", min_value=10, max_value=1000, value=100, key='tamanho_novo')
+        condicao_novo = st.slider("Condição do imóvel (0 - Péssimo, 10 - Excelente)", 0, 10, 5, key='condicao_novo')
+        quartos_novo = st.number_input("Número de quartos", min_value=1, max_value=10, value=3, key='quartos_novo')
+        banheiros_novo = st.number_input("Número de banheiros", min_value=1, max_value=5, value=2, key='banheiros_novo')
+        bairro_novo = st.selectbox("Bairro", ['Centro', 'Zona Sul', 'Zona Norte', 'Zona Leste', 'Zona Oeste'], key='bairro_novo')
+        tipo_imovel_novo = st.selectbox("Tipo do Imóvel", ['Casa', 'Apartamento'], key='tipo_imovel_novo')
+        preco_novo = st.number_input("Preço do imóvel", min_value=0.0, value=100000.0, key='preco_novo')
+
+        if st.button("Adicionar Novo Registro"):
+            novo_registro = {
+                'tamanho': tamanho_novo,
+                'condicao': condicao_novo,
+                'quartos': quartos_novo,
+                'banheiros': banheiros_novo,
+                'bairro': bairro_novo,
+                'tipo_imovel': tipo_imovel_novo,
+                'preco': preco_novo
+            }
+            inserir_dado(novo_registro)
+            retrain_model()
+            st.session_state['final_model'] = final_model
+            st.success("Novo registro adicionado e modelo re-treinado com sucesso!")
+            st.rerun()
